@@ -23,7 +23,7 @@ type Face
 	Vertex as PointF[]
 endtype
 
-function NormalizeVector3(x#, y#, z#)
+function Normalize(x#, y#, z#)
 	
 	d# = Sqrt(LengthSq3(x#, y#, z#))
 	
@@ -32,6 +32,22 @@ function NormalizeVector3(x#, y#, z#)
 	v.Y = y# / d#
 	v.Z = z# / d#
 	
+endfunction v
+
+function NormalizeVector3(v as Vector3)
+	
+	d# = Sqrt(LengthSq3(v.X, v.Y, v.Z))
+	v.X = v.X / d#
+	v.Y = v.Y / d#
+	v.Z = v.Z / d#
+	
+endfunction v
+
+function MakeVector3(x#, y#, z#)
+	local v as Vector3
+	v.X = x#
+	v.Y = y#
+	v.Z = z#
 endfunction v
 
 function EdgeVector3(x#, y#, z#)
@@ -279,3 +295,43 @@ function PerpendicularDistance(p1 ref as PointF, p2 ref as PointF, p ref as Poin
 	height# = area# / bottom# * 2
 
 endfunction height#
+
+function GetTriangleNormal(p1 as PointF, p2 as PointF, p3 as PointF, thick#)
+	
+	local v1 as Vector3
+	local v2 as Vector3
+	local v3 as Vector3
+	
+	v1 = MakeVector3(p1.X, p1.Y, thick#)
+	v2 = MakeVector3(p2.X, p2.Y, -thick#)
+	v3 = MakeVector3(p3.X, p3.Y, -thick#)
+	
+	local r as Vector3
+	
+	r = Vector3CrossProduct(Vector3Subtract(v2, v1), Vector3Subtract(v3, v1))
+	
+endfunction r
+
+function Vector3CrossProduct(lhs as Vector3, rhs as Vector3)
+	
+	local r as Vector3
+	r.X = lhs.y * rhs.z - lhs.z * rhs.y
+    r.Y = lhs.z * rhs.x - lhs.x * rhs.z
+    r.Z = lhs.x * rhs.y - lhs.y * rhs.x
+	
+endfunction r
+
+function Vector3DotProduct(lhs as Vector3, rhs as Vector3)
+	
+	r# = lhs.x * rhs.x + lhs.y * rhs.y + lhs.z * rhs.z
+	
+endfunction r#
+
+function Vector3Subtract(v1 as Vector3, v2 as Vector3)
+	
+	local r as Vector3
+	r.X = v1.X - v2.X
+	r.Y = v1.Y - v2.Y
+	r.Z = v1.Z - v2.Z
+	
+endfunction r

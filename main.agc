@@ -1,7 +1,3 @@
-/// Known problems:
-///
-/// OBJ exported files seems to still use dynamically generated normals instead of normals generated in code.
-
 #include "polygon.agc"
 
 // show all errors
@@ -26,17 +22,22 @@ SetShadowMappingMode(3)
 SetShadowMapSize(2048, 2048)
 SetShadowSmoothing(0)
 SetShadowBias(0.01)
-SetSunDirection(-0.2, -0.3, 0.5)
+
+local sun as Vector3
+sun = Normalize(1, -1, 1)
+
+SetSunDirection(sun.X, sun.Y, sun.Z)
+SetSunColor(255, 255, 255)
 
 local points as PointF[]
 local faces as Face[]
 
-SetCameraPosition(1, 0, 50, -100)
+SetCameraPosition(1, 0, 0, -100)
 SetCameraLookAt(1, 0, 0, 0, 0)
 
 marbleImage = LoadImage("marble.png")
 marbleNormalImage = LoadImage("marble_NORM.png")
-baseImage = LoadImage("spy.png")
+baseImage = LoadImage("cloak-2.png")
 
 Print("Flattening image...")
 Sync()
@@ -44,7 +45,7 @@ texture = FlattenImage(baseImage)
 
 Print("Creating point list...")
 Sync()
-points = DouglasPeuckerReduction(CalculateHull(baseImage, 256, 1), 0.01)
+points = DouglasPeuckerReduction(CalculateHull(baseImage, 512, 4), 0.005)
 
 Print("Triangulating...")
 Sync()
@@ -52,31 +53,32 @@ faces = Triangulate(points)
 
 Print("Creating object...")
 Sync()
-ob = CreateCutoutObject(points, faces, 0.03)
+ob = CreateCutoutObject(points, faces, 0.015)
 
 SetObjectImage(ob, texture, 0)
-SetObjectScale(ob, 50, 50, 50)
-SetObjectRotation(ob, 180, 0, 0)
+SetObjectScalePermanent(ob, 50, 50, 50)
 SetObjectPosition(ob, 0, 0, 0)
 SetObjectCastShadow(ob, 1)
+SetObjectReceiveShadow(ob, 0)
+//SetObjectCullMode(ob, 0)
 SetObjectLightMode(ob, 2)
 
-base = CreateObjectCylinder(0.025, Abs(GetObjectSizeMinX(ob)) + GetObjectSizeMaxX(ob), 32)
+base = CreateObjectCylinder(2, Abs(GetObjectSizeMinX(ob)) + GetObjectSizeMaxX(ob), 32)
 SetObjectimage(base, marbleImage, 0)
 SetObjectNormalMap(base, marbleNormalImage)
-SetObjectPosition(base, GetObjectX(ob), GetObjectY(ob) - GetObjectSizeMinY(ob), GetObjectZ(ob))
+SetObjectPosition(base, GetObjectX(ob), GetObjectY(ob) - GetObjectSizeMaxY(ob), GetObjectZ(ob))
 SetObjectCastShadow(base, 1)
 FixObjectToObject(base, ob)
 
 board = CreateObjectPlane(256, 256)
 SetObjectRotation(board, 90, 0, 0)
-SetObjectPosition(board, 0, GetObjectY(ob) - 22, 0)
+SetObjectPosition(board, 0, GetObjectY(ob) - (GetObjectSizeMaxY(ob) + 1), 0)
 SetObjectColor(board, 127, 127, 127, 255)
 SetObjectReceiveShadow(board, 1)
 
 do
 	
-	RotateObjectLocalY(ob, 0.25)
+	RotateObjectLocalY(ob, 0.5)
     Print("Triangles: " + Str((faces.Length * 2) + (points.Length * 2)))
     Sync()
 loop
@@ -88,140 +90,71 @@ function CreateCutoutObject(points ref as PointF[], faces ref as Face[], thickne
 	numFaces = faces.Length + 1
 	numIndicies = numFaces * 3
 	numExtendedIndices = numVerticies * 2 * 3
-	blockSize = (3 + 2 + 3) * 4
 	thick# = thickness / 2.0
 	
-	//vString$ = ""
-	//vtString$ = ""
-	//vnString$ = ""
-	//fString$ = ""
-
-	mem = CreateMemblock((numVerticies * 2 * blockSize) + (numIndicies * 2 * 4) + (numExtendedIndices * 4) + 60)
-
-	SetMemblockInt(mem, 0, numVerticies * 2)
-	SetMemblockInt(mem, 4, numIndicies * 2 + numExtendedIndices)
-	SetMemblockInt(mem, 8, 3)
-	SetMemblockInt(mem, 12, blockSize)
-	
-	SetMemblockByte(mem, 24, 0) // Data type
-	SetMemblockByte(mem, 25, 3) // Component Count
-	SetMemblockByte(mem, 26, 0) // Normalize flag
-	SetMemblockByte(mem, 27, 12) // String length
-	SetMemblockString(mem, 28, "position") // String
-	
-	SetMemblockByte(mem, 40, 0) // Data type
-	SetMemblockByte(mem, 41, 2) // Component Count
-	SetMemblockByte(mem, 42, 0) // Normalize flag
-	SetMemblockByte(mem, 43, 4) // String length
-	SetMemblockString(mem, 44, "uv") // String
-	
-	SetMemblockByte(mem, 48, 0) // Data type
-	SetMemblockByte(mem, 49, 3) // Component Count
-	SetMemblockByte(mem, 50, 0) // Normalize flag
-	SetMemblockByte(mem, 51, 8) // String length
-	SetMemblockString(mem, 52, "normal") // String
-	
-	offset = 60
-	SetMemblockInt(mem, 16, offset)
+	vString$ = ""
+	vtString$ = ""
+	vnString$ = ""
+	fString$ = ""
 	
 	for i = 0 to points.Length
-		index = offset + (i * blockSize)
-		SetMemblockFloat(mem, index, points[i].X)
-		SetMemblockFloat(mem, index + 4, points[i].Y)
-		SetMemblockFloat(mem, index + 8, -thick#)
-		//vString$ = vString$ + "v " + Str(points[i].X) + " " + Str(points[i].Y) + " " + Str(-thick#) + Chr(13) + chr(10)
-		SetMemblockFloat(mem, index + 12, points[i].U)
-		SetMemblockFloat(mem, index + 16, points[i].V)
-		//vtString$ = vtString$ + "vt " + Str(points[i].U) + " " + Str(points[i].V) + Chr(13) + chr(10)
-		tv = NormalizeVector3(points[i].U - 0.5, points[i].V - 0.5, -0.5)
-		SetMemblockFloat(mem, index + 20, tv.X)
-		SetMemblockFloat(mem, index + 24, tv.Y)
-		SetMemblockFloat(mem, index + 28, tv.Z)
-		//vnString$ = vnString$ + "vn " + Str(tv.X) + " " + Str(tv.Y) + " " + Str(tv.Z) + Chr(13) + chr(10)
+		vString$ = vString$ + "v " + Str(points[i].X) + " " + Str(-points[i].Y) + " " + Str(-thick#) + Chr(13) + chr(10)
+		vtString$ = vtString$ + "vt " + Str(points[i].U) + " " + Str(1.0 - points[i].V) + Chr(13) + chr(10)
 	next i
 	
-	offset = offset + (numVerticies * blockSize)
+	vnString$ = vnString$ + "vn 0 0 -1.0" + Chr(13) + Chr(10)
+	
 	for i = 0 to points.Length
-		index = offset + (i * blockSize)
-		SetMemblockFloat(mem, index, points[i].X)
-		SetMemblockFloat(mem, index + 4, points[i].Y)
-		SetMemblockFloat(mem, index + 8, thick#)
-		//vString$ = vString$ + "v " + Str(points[i].X) + " " + Str(points[i].Y) + " " + Str(thick#) + Chr(13) + chr(10)
-		SetMemblockFloat(mem, index + 12, points[i].U)
-		SetMemblockFloat(mem, index + 16, points[i].V)
-		//vtString$ = vtString$ + "vt " + Str(points[i].U) + " " + Str(points[i].V) + Chr(13) + chr(10)
-		tv = NormalizeVector3(points[i].U - 0.5, points[i].V - 0.5, 0.5)
-		SetMemblockFloat(mem, index + 20, tv.X)
-		SetMemblockFloat(mem, index + 24, tv.Y)
-		SetMemblockFloat(mem, index + 28, tv.Z)
-		//vnString$ = vnString$ + "vn " + Str(tv.X) + " " + Str(tv.Y) + " " + Str(tv.Z) + Chr(13) + chr(10)
+		vString$ = vString$ + "v " + Str(points[i].X) + " " + Str(-points[i].Y) + " " + Str(thick#) + Chr(13) + chr(10)
+		vtString$ = vtString$ + "vt " + Str(points[i].U) + " " + Str(1.0 - points[i].V) + Chr(13) + chr(10)
 	next i
 	
-	offset = offset + (numVerticies * blockSize)
-	SetMemblockInt(mem, 20, offset)
+	vnString$ = vnString$ + "vn 0 0 1.0" + Chr(13) + Chr(10)
 	
+	vtString$ = vtString$ + "vt 0 0 0"+ Chr(13) + chr(10)	
 	fString$ = fString$ + "s off" + Chr(13) + Chr(10)
 	
 	for i = 0 to faces.Length
-		index = offset + (i * 12)
-		SetmemblockInt(mem, index, faces[i].Vertex[0].ID + 0)
-		SetmemblockInt(mem, index + 4, faces[i].Vertex[1].ID + 0)
-		SetmemblockInt(mem, index + 8, faces[i].Vertex[2].ID + 0)
-		//fString$ = fString$ + "f " + FaceVTN(faces[i].Vertex[0].ID + 1) + " " + FaceVTN(faces[i].Vertex[1].ID + 1) + " " + FaceVTN(faces[i].Vertex[2].ID + 1) + Chr(13) + Chr(10)
+		fString$ = fString$ + "f " + FaceVTN(faces[i].Vertex[0].ID + 1, faces[i].Vertex[0].ID + 1, 1) + " " + FaceVTN(faces[i].Vertex[1].ID + 1, faces[i].Vertex[1].ID + 1, 1) + " " + FaceVTN(faces[i].Vertex[2].ID + 1, faces[i].Vertex[2].ID + 1, 1) + Chr(13) + Chr(10)
 	next i
 	
-	offset = offset + (numIndicies * 4)
 	for i = 0 to faces.Length
-		index = offset + (i * 12)
-		v = faces[i].Vertex.Length
-		SetmemblockInt(mem, index, faces[i].Vertex[2].ID + numVerticies)
-		SetmemblockInt(mem, index + 4, faces[i].Vertex[1].ID + numVerticies)
-		SetmemblockInt(mem, index + 8, faces[i].Vertex[0].ID + numVerticies)
-		//fString$ = fString$ + "f " + FaceVTN(faces[i].Vertex[2].ID + 1 + numVerticies) + " " + FaceVTN(faces[i].Vertex[1].ID + 1 + numVerticies) + " " + FaceVTN(faces[i].Vertex[0].ID + 1 + numVerticies) + Chr(13) + Chr(10)
+		fString$ = fString$ + "f " + FaceVTN(faces[i].Vertex[2].ID + 1 + numVerticies, faces[i].Vertex[2].ID + 1 + numVerticies, 2) + " " + FaceVTN(faces[i].Vertex[1].ID + 1 + numVerticies, faces[i].Vertex[1].ID + 1 + numVerticies, 2) + " " + FaceVTN(faces[i].Vertex[0].ID + 1 + numVerticies, faces[i].Vertex[0].ID + 1 + numVerticies, 2) + Chr(13) + Chr(10)
 	next i
-	
-	offset = offset + (numIndicies * 4)
 	
 	// Extended indices
+	cVT = points.Length * 2 + 1
 	for i = 0 to points.Length
 		p1 = i
 		p2 = Mod(i + 1, points.Length + 1)
-		index = offset + (i * 12)
-		SetmemblockInt(mem, index, p2 + numVerticies)
-		SetmemblockInt(mem, index + 4, p2 + 0)
-		SetmemblockInt(mem, index + 8, p1 + 0)
-		//fString$ = fString$ + "f " + FaceVTN(p2 + numVerticies + 1) + " " + FaceVTN(p2 + 0 + 1) + " " + FaceVTN(p1 + 0 + 1) + Chr(13) + Chr(10)
+		tv = NormalizeVector3(GetTriangleNormal(points[p2], points[p2], points[p1], thick#))
+		vnString$ = vnString$ + "vn " + Str(-tv.X) + " " + Str(tv.Y) + " " + Str(-tv.Z) + Chr(13) + Chr(10)
+		//fString$ = fString$ + "f " + FaceVTN(p2 + numVerticies + 1, p2 + numVerticies + 1, i + 3) + " " + FaceVTN(p2 + 0 + 1, p2 + 0 + 1, i + 3) + " " + FaceVTN(p1 + 0 + 1, p1 + 0 + 1, i + 3) + Chr(13) + Chr(10)
+		fString$ = fString$ + "f " + FaceVTN(p2 + numVerticies + 1, cVT, i + 3) + " " + FaceVTN(p2 + 0 + 1, cVT, i + 3) + " " + FaceVTN(p1 + 0 + 1, cVT, i + 3) + Chr(13) + Chr(10)
 	next i
 	
-	offset = offset + (numVerticies * 3 * 4)
 	for i = 0 to points.Length
 		p1 = i
 		p2 = Mod(i + 1, points.Length + 1)
-		index = offset + (i * 12)
-		SetmemblockInt(mem, index, p1 + 0)
-		SetmemblockInt(mem, index + 4, p1 + numVerticies)
-		SetmemblockInt(mem, index + 8, p2 + numVerticies)
-		//fString$ = fString$ + "f " + FaceVTN(p1 + 0 + 1) + " " + FaceVTN(p1 + numVerticies + 1) + " " + FaceVTN(p2 + numVerticies + 1) + Chr(13) + Chr(10)
+		//fString$ = fString$ + "f " + FaceVTN(p1 + 0 + 1, p1 + 0 + 1, i + 3) + " " + FaceVTN(p1 + numVerticies + 1, p1 + numVerticies + 1, i + 3) + " " + FaceVTN(p2 + numVerticies + 1, p2 + numVerticies + 1, i + 3) + Chr(13) + Chr(10)
+		fString$ = fString$ + "f " + FaceVTN(p1 + 0 + 1, cVT, i + 3) + " " + FaceVTN(p1 + numVerticies + 1, cVT, i + 3) + " " + FaceVTN(p2 + numVerticies + 1, cVT, i + 3) + Chr(13) + Chr(10)
 	next i
 		
-	ob = CreateObjectFromMeshMemblock(mem)
+	f = OpenToWrite("output.obj")
+	WriteLine(f, "o object")
+	WriteLine(f, vString$)
+	WriteLine(f, vtString$)
+	WriteLine(f, vnString$)
+	WriteLine(f, fString$)
+	CloseFile(f)
 	
-	CreateFileFromMemblock("output.dat", mem)
-	DeleteMemblock(mem)
-	
-	//f = OpenToWrite("output.obj")
-	//WriteLine(f, "o object")
-	//WriteLine(f, vString$)
-	//WriteLine(f, vtString$)
-	//WriteLine(f, vnString$)
-	//WriteLine(f, fString$)
-	//CloseFile(f)
+	ob = LoadObject("output.obj")
 	
 endfunction ob
 
-function FaceVTN(v)
+function FaceVTN(p1, p2, p3)
 	
-	r$ = Str(v) + "/" + Str(v) + "/" + Str(v)
+	r$ = Str(p1) + "/" + Str(p2) + "/" + Str(p3)
 	
 endfunction r$
 
@@ -240,6 +173,14 @@ function FlattenImage(img as integer)
 	SetRenderToImage(r, 0)
 	SetVirtualResolution(iw, ih)
 	
+	bgImg = CreateImageColor(255, 255, 255, 255)
+	s = CreateSprite(bgImg)
+	SetSpriteSize(s, iw, ih)
+	SetSpritePosition(s, 0, 0)
+	DrawSprite(s)
+	DeleteSprite(s)
+	DeleteImage(bgImg)
+	
 	s = CreateSprite(img)
 	SetSpritePositionByOffset(s, iw / 2, ih / 2)
 	DrawSprite(s)
@@ -247,6 +188,8 @@ function FlattenImage(img as integer)
 	
 	SetRenderToScreen()
 	SetVirtualResolution(rw, rh)
+	
+	exitfunction r
 	
 	mem = CreateMemblockFromImage(r)
 	
@@ -270,6 +213,7 @@ function FlattenImage(img as integer)
 	
 	DeleteImage(r)
 	r = CreateImageFromMemblock(mem)
+	DeleteMemblock(mem)
 	
 endfunction r
 
@@ -347,10 +291,11 @@ function CalculateHull(img as integer, resolution as integer, erodeCount as inte
 					next iy
 					
 					if c > 0 // One or more adjacent visible pixels
-						SetMemblockByte(mem, (i * 4) + 12, 255)
-						SetMemblockByte(mem, (i * 4) + 1 + 12, 255)
-						SetMemblockByte(mem, (i * 4) + 2 + 12, 255)
-						SetMemblockByte(mem, (i * 4) + 3 + 12, 255)
+						SetMemblockInt(mem, (i * 4) + 12, 0xFFFFFFFF)
+						//SetMemblockByte(mem, (i * 4) + 12, 255)
+						//SetMemblockByte(mem, (i * 4) + 1 + 12, 255)
+						//SetMemblockByte(mem, (i * 4) + 2 + 12, 255)
+						//SetMemblockByte(mem, (i * 4) + 3 + 12, 255)
 					endif
 					
 				endif
@@ -408,7 +353,7 @@ function CalculateHull(img as integer, resolution as integer, erodeCount as inte
 	DeleteImage(r)
 	
 	// Navigate the outline to generate a list of pixels
-	lastAngle = 0
+	lastAngle# = 0.0
 	c = 0
 	nx = sx
 	ny = sy
@@ -434,24 +379,28 @@ function CalculateHull(img as integer, resolution as integer, erodeCount as inte
 			
 			inc c
 			dec pcount
-				
-			for angle = 0 to 315 step 45
+			
+			ainc# = 22.5
+			max = (360.0 / ainc#) - 1
+			
+			for a = 0 to max
 
-				tangle = Mod(lastAngle - 180 + angle, 360)
-				ix = Round(Sin(tangle)) + nx
-				iy = Round(-Cos(tangle)) + ny
+				angle# = a * ainc#
+				tangle# = FMod(lastAngle# - 180.0 + angle#, 360.0)
+				ix = Round(Sin(tangle#)) + nx
+				iy = Round(-Cos(tangle#)) + ny
 				
 				g = GetGridCell(state, ix, iy, resolution, resolution)
 				
 				if g = 1
 					nx = ix
 					ny = iy
-					lastAngle = tangle
+					lastAngle# = tangle#
 					found = 1
 					exit
 				endif
 						
-			next angle
+			next a
 		
 		endif
 			
